@@ -118,20 +118,20 @@ def update_buttons(message):
         target_word, translate = get_random_word_pair(session, message.from_user.username)
         others = get_random_words(session, target_word, message.from_user.username)
 
-    buttons = [types.KeyboardButton(target_word)]
-    buttons.extend([types.KeyboardButton(word) for word in others])
+    buttons = [types.KeyboardButton(target_word.capitalize())]
+    buttons.extend([types.KeyboardButton(word.capitalize()) for word in others])
     random.shuffle(buttons)
     buttons.extend([types.KeyboardButton(Command.NEXT),
                     types.KeyboardButton(Command.ADD_WORD),
                     types.KeyboardButton(Command.DELETE_WORD)])
 
-    greeting = f"Выбери перевод слова:\n🇷🇺 {translate}"
+    greeting = f"Выбери перевод слова:\n🇷🇺 {translate.capitalize()}"
     bot.send_message(message.chat.id, greeting, reply_markup=create_markup(buttons))
     bot.set_state(message.from_user.id, MyStates.target_word, message.chat.id)
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-        data['target_word'] = target_word
-        data['translate_word'] = translate
-        data['other_words'] = others
+        data['target_word'] = target_word.capitalize()
+        data['translate_word'] = translate.capitalize()
+        data['other_words'] = others.capitalize()
 
 
 @bot.message_handler(func=lambda message: message.text == Command.NEXT)
@@ -191,27 +191,61 @@ def process_add_word(message):
     update_buttons(message)
 
 
+@bot.message_handler(commands=['help'])
+def help_command(message):
+    """
+    Обработчик команды /help. Выводит справку по работе бота
+    """
+    help_text = """
+        🤖 **Описание программы:**
+        Этот бот помогает вам учить английские слова. Вы можете добавлять новые слова, удалять их и тренироваться в запоминании.
+
+        🛠 **Доступные команды:**
+        /start или /cards - Начать изучение слов.
+        /help - Показать это сообщение с инструкцией.
+
+        🎮 **Как пользоваться:**
+        1. Бот покажет вам слово на русском языке и несколько вариантов перевода на английский.
+        2. Выберите правильный перевод слова.
+        3. Если вы ошиблись, бот подскажет что перевод выбран неверно. Попробуйте еще раз.
+        4. Используйте кнопку "Дальше ⏭", чтобы перейти к следующему слову.
+
+        ➕ **Добавление слов:**
+        - Нажмите кнопку "Добавить слово ➕".
+        - Введите слово и его перевод через пробел (например, "cat кот").
+
+        🔙 **Удаление слов:**
+        - Нажмите кнопку "Удалить слово🔙".
+        - Введите слово, которое хотите удалить.
+
+        """
+    bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
+    update_buttons(message)
+
+
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def message_reply(message):
     """
     Обработчик текстовых сообщений от пользователя. Проверяет правильность перевода слова.
-    :param message:
-    :return:
     """
     text = message.text
+    valid = False
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
         target_word = data['target_word']
         if text == target_word:
             hint = show_target(data)
             hint_text = ["Отлично!❤", hint]
             hint = show_hint(*hint_text)
+            valid = True
         else:
             for btn in buttons:
                 if btn.text == text:
                     btn.text = text + '❌'
                     break
-            hint = show_hint("Допущена ошибка!", f"Попробуй ещё раз вспомнить слово 🇷🇺{data['translate_word']}")
+            hint = show_hint("Допущена ошибка!", f"Попробуй ещё раз вспомнить слово 🇷🇺{data['translate_word'].capitalize()}")
     bot.send_message(message.chat.id, hint, reply_markup=create_markup(buttons))
+    if valid:
+        next_cards(message)
 
 
 bot.add_custom_filter(custom_filters.StateFilter(bot))
