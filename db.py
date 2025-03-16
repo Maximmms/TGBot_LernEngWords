@@ -182,7 +182,7 @@ def get_random_words(session, target_word, current_user):
         .filter(Words.target_word != target_word)
         .filter(or_(UserWord.user_id == 1, UserWord.user_id == user.id))
         .order_by(func.random())
-        .limit(4)
+        .limit(3)
         .all()
     )
     return [word.target_word for word in random_words]

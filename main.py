@@ -82,14 +82,16 @@ def create_markup(buttons):
     markup.add(*buttons)
     return markup
 
+
 def initialize_user(session, username):
     """
     Функция для добавления нового пользователя в базу данных
     :param session: Сессия базы данных.
     :param username: Имя пользователя.
     """
-    if not check_user_exist(session, username):
+    if check_user_exist(session, username):
         add_user(session, username)
+
 
 @bot.message_handler(commands=['cards', 'start'])
 def create_cards(message):
@@ -150,7 +152,6 @@ def handle_delete_word(message):
     bot.send_message(message.chat.id, f'{message.from_user.username}, введите слово которое хотите удалить')
     bot.register_next_step_handler(message, process_delete_word)
 
-
 def process_delete_word(message):
     """
     Функция для обработки удаления слова
@@ -164,6 +165,7 @@ def process_delete_word(message):
         else:
             bot.send_message(message.chat.id, f'{message.from_user.username}, нет такого слова!!!')
     update_buttons(message)
+
 
 @bot.message_handler(func=lambda message: message.text == Command.ADD_WORD)
 def handle_add_word(message):
