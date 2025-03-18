@@ -1,8 +1,11 @@
 import random
 import telebot
 import sqlalchemy
+import requests
+import logging
 
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import and_
 from telebot import types, custom_filters, StateMemoryStorage
 from telebot.states import StatesGroup, State
 from config import *
@@ -13,12 +16,15 @@ DSN = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 engine = sqlalchemy.create_engine(DSN)
 Session = sessionmaker(bind=engine)
 
-print('Start telegram bot...')
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("__BOT__")
+
+logger.info('Start telegram bot...')
 
 state_storage = StateMemoryStorage()
 bot = telebot.TeleBot(TG_TOKEN, state_storage=state_storage)
 
-known_users = []
+known_users = set()
 userStep = {}
 buttons = []
 
@@ -68,7 +74,7 @@ def get_user_step(uid):
     if uid not in known_users:
         known_users.add(uid)
         userStep[uid] = 0
-        print(f"New user detected: {uid}")
+        logger.info(f"New user detected: {uid}")
     return userStep.get(uid, 0)
 
 
@@ -105,7 +111,7 @@ def create_cards(message):
 
     cid = message.chat.id
     if cid not in known_users:
-        known_users.append(cid)
+        known_users.add(cid)
         userStep[cid] = 0
         bot.send_message(cid, f"Hello, {message.from_user.username}, let study English...")
 
@@ -157,20 +163,28 @@ def process_delete_word(message):
     Функция для обработки удаления слова
     :param message: Сообщение пользователя, содержащее слово для удаления
     """
-    word = message.text.lower()
-    with Session() as session:
-        if session.query(Words).filter_by(target_word=word).first():
-            delete_word(session, word, message.chat.username)
-            bot.send_message(message.chat.id, f'Слово <{word.capitalize()}> удалено!')
-        else:
-            bot.send_message(message.chat.id, f'{message.from_user.username}, нет такого слова!!!')
-    update_buttons(message)
+    try:
+        incoming_word = message.text.strip().lower().split()
+        if len(incoming_word) != 1:
+            raise ValueError
+        word = incoming_word[0]
+        logger.info(word)
+        with Session() as session:
+            if session.query(Words).join(UserWord).join(Users).filter(and_(Words.target_word==word,Users.name==message.chat.username)).first():
+                delete_word(session, word, message.chat.username)
+                bot.send_message(message.chat.id, f'Слово <{word.capitalize()}> удалено!')
+            else:
+                bot.send_message(message.chat.id, f'{message.from_user.username}, нет такого слова в вашем словаре!!!')
+        update_buttons(message)
+    except ValueError:
+        bot.send_message(message.chat.id,f'Произошла ошибка!\n, Повторите ввод, указав слово которое хотите удалить.')
+        bot.register_next_step_handler(message, process_delete_word)
 
 
 @bot.message_handler(func=lambda message: message.text == Command.ADD_WORD)
 def handle_add_word(message):
     """
-    Обработчик команды "Добавить слово ➕". Запрашивает у пользователя слово и его перевод.
+    Обработчик команды "Добавить слово ➕". Запрашивает у пользователя слово и его перевод.G
     """
     bot.send_message(message.chat.id, f'{message.from_user.username}, введите слово и его перевод')
     bot.register_next_step_handler(message, process_add_word)
@@ -180,17 +194,21 @@ def process_add_word(message):
     Функция для обработки добавления пары слово-перевод
     """
     try:
-        word, translate = message.text.lower().split()
+        income_words = message.text.strip().lower().split(' ', 1)
+        if len(income_words) != 2:
+            raise ValueError
+        word, translate= income_words
         with Session() as session:
             count, status = add_word(session, word, translate, message.from_user.username)
             if status:
                 bot.send_message(message.chat.id, f'Слово <{word.capitalize()}> и его перевод <{translate.capitalize()}> добавлены!')
+                bot.send_message(message.chat.id, f'Количество изучаемых пользователем слов: {count}')
             else:
                 bot.send_message(message.chat.id, f'Слово <{word.capitalize()}> уже есть!')
-        bot.send_message(message.chat.id, f'Количество изучаемых пользователем слов: {count}')
+        update_buttons(message)
     except ValueError:
-        bot.send_message(message.chat.id, 'Пожалуйста, введите слово и его перевод через пробел.')
-    update_buttons(message)
+        bot.send_message(message.chat.id, f'Произошла ошибка!\n Повторите ввод, указав слово и его перевод снова через пробел.')
+        bot.register_next_step_handler(message, process_add_word)
 
 
 @bot.message_handler(commands=['help'])
