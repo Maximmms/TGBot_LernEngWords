@@ -2,7 +2,7 @@ import sqlalchemy as sq
 from sqlalchemy import func
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.sql.elements import or_
+from sqlalchemy.sql.elements import or_, and_
 
 
 Base = declarative_base()
@@ -149,7 +149,7 @@ def delete_word(session, word, current_user):
         session.commit()
 
 
-def get_random_word_pair(session, current_user):
+def get_random_word_pair(session, current_user, recent_word):
     """
     Возвращает случайное слово и его перевод из базы данных.
     :param session: Сессия SQLAlchemy.
@@ -161,13 +161,14 @@ def get_random_word_pair(session, current_user):
         session.query(Words)
         .join(UserWord)
         .filter(or_(UserWord.user_id == 1, UserWord.user_id == user.id))
+        .filter(Words.target_word.notin_(recent_word))
         .order_by(func.random())
         .first()
     )
     return (random_word.target_word, random_word.translate) if random_word else (None, None)
 
 
-def get_random_words(session, target_word, current_user):
+def get_random_words(session, target_word, current_user, recent_word):
     """
     Возвращает список из 4 случайных слов, исключая указанное слово.
     :param session: Сессия SQLAlchemy.
@@ -179,7 +180,7 @@ def get_random_words(session, target_word, current_user):
     random_words = (
         session.query(Words.target_word)
         .join(UserWord)
-        .filter(Words.target_word != target_word)
+        .filter(and_(Words.target_word != target_word, Words.target_word.notin_(recent_word)))
         .filter(or_(UserWord.user_id == 1, UserWord.user_id == user.id))
         .order_by(func.random())
         .limit(3)

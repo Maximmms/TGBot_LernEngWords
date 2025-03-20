@@ -1,7 +1,6 @@
 import random
 import telebot
 import sqlalchemy
-import requests
 import logging
 
 from sqlalchemy.orm import sessionmaker
@@ -27,6 +26,7 @@ bot = telebot.TeleBot(TG_TOKEN, state_storage=state_storage)
 known_users = set()
 userStep = {}
 buttons = []
+word_list = []
 
 
 def show_hint(*lines):
@@ -123,8 +123,9 @@ def update_buttons(message):
     """
     global buttons
     with Session() as session:
-        target_word, translate = get_random_word_pair(session, message.from_user.username)
-        others = get_random_words(session, target_word, message.from_user.username)
+        target_word, translate = get_random_word_pair(session, message.from_user.username, word_list)
+        word_list.append(target_word)
+        others = get_random_words(session, target_word, message.from_user.username, word_list)
 
     buttons = [types.KeyboardButton(target_word.capitalize())]
     buttons.extend([types.KeyboardButton(word.capitalize()) for word in others])
@@ -147,6 +148,7 @@ def next_cards(message):
     """
     Обработчик команды "Дальше ⏭"
     """
+    word_list.pop(0) if len(word_list) > 4 else None
     update_buttons(message)
 
 
@@ -266,6 +268,7 @@ def message_reply(message):
     bot.send_message(message.chat.id, hint, reply_markup=create_markup(buttons))
     if valid:
         next_cards(message)
+
 
 
 bot.add_custom_filter(custom_filters.StateFilter(bot))
