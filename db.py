@@ -1,8 +1,9 @@
 import sqlalchemy as sq
 from sqlalchemy import func
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import declarative_base, relationship, Session
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.elements import or_, and_
+from typing import Optional, Tuple, List
 
 
 Base = declarative_base()
@@ -39,14 +40,14 @@ class Words(Base):
     Users = relationship('UserWord', backref='words')
 
 
-def create_table(engine):
+def create_table(engine: sq.engine.Engine) -> None:
     """
     Создаем все таблицы в базе данных, если они еще не существуют.
     """
     Base.metadata.create_all(engine)
 
 
-def check_user_exist(session, username):
+def check_user_exist(session: Session, username: str) -> bool:
     """
     Проверяем, существует ли пользователь с указанным именем.
     :param session: Сессия SQLAlchemy.
@@ -56,7 +57,7 @@ def check_user_exist(session, username):
     return session.query(Users).filter_by(name=username).first() is None
 
 
-def check_word_exist(session, word):
+def check_word_exist(session: Session, word: str) -> Optional[Words]:
     """
     Проверяем, существует ли слово в базе данных.
     :param session: Сессия SQLAlchemy.
@@ -66,7 +67,7 @@ def check_word_exist(session, word):
     return session.query(Words).filter_by(target_word=word).first()
 
 
-def add_user(session, username):
+def add_user(session, username: str) -> Optional[bool]:
     """
     Добавляем нового пользователя в базу данных.
     :param session: Сессия SQLAlchemy.
@@ -82,7 +83,7 @@ def add_user(session, username):
         session.rollback()
         return None
 
-def count_user_word(session, current_user):
+def count_user_word(session: Session, current_user: str) -> int:
     """
     Считает количество слов изучаемых текущим пользователем
     :param session: Сессия SQLAlchemy.
@@ -97,7 +98,7 @@ def count_user_word(session, current_user):
         .count()
     )
 
-def add_word(session, word, translate, current_user):
+def add_word(session: Session, word: str, translate: str, current_user: str) -> Tuple[int, Optional[bool]]:
     """
     Добавляем новое слово и связываем его с пользователем.
     :param session: Сессия SQLAlchemy.
@@ -128,7 +129,7 @@ def add_word(session, word, translate, current_user):
         return None
 
 
-def delete_word(session, word, current_user):
+def delete_word(session: Session, word: str, current_user: str) -> None:
     """
     Удаляем слово для указанного пользователя.
     :param session: Сессия SQLAlchemy.
@@ -149,12 +150,13 @@ def delete_word(session, word, current_user):
         session.commit()
 
 
-def get_random_word_pair(session, current_user, recent_word):
+def get_random_word_pair(session: Session, current_user: str, recent_word: List[str]) -> Tuple[Optional[str], Optional[str]]:
     """
     Возвращает случайное слово и его перевод из базы данных.
     :param session: Сессия SQLAlchemy.
     :param current_user: Текущий пользовватель
-    :return: Кортеж из слова и его перевода. Если слов нет, возвращает (None, None).
+    :param recent_word: Список последних использованных слов
+    :return: Кортаеж из слова и его перевод. Если слов нет, возвращает (None, None).
     """
     user = session.query(Users).filter_by(name=current_user).first()
     random_word = (
@@ -168,12 +170,13 @@ def get_random_word_pair(session, current_user, recent_word):
     return (random_word.target_word, random_word.translate) if random_word else (None, None)
 
 
-def get_random_words(session, target_word, current_user, recent_word):
+def get_random_words(session: Session, target_word: str, current_user: str, recent_word: List[str]) -> List[str]:
     """
     Возвращает список из 4 случайных слов, исключая указанное слово.
     :param session: Сессия SQLAlchemy.
     :param target_word: Текущее целевое слово, которое нужно исключить из выборки.
     :param current_user: Текущий пользовватель
+    :param recent_word: Список последних использованных слов
     :return: Список случайных слов входящих привязанных к текущему пользователю и базовых слов
     """
     user = session.query(Users).filter_by(name=current_user).first()
@@ -189,7 +192,7 @@ def get_random_words(session, target_word, current_user, recent_word):
     return [word.target_word for word in random_words]
 
 
-def db_init(session):
+def db_init(session: Session) -> None:
     """
     Инициализирует базу данных начальными данными.
     Создает пользователя 'Initial User' и добавляет список слов с переводами.

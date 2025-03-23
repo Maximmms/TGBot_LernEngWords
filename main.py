@@ -3,7 +3,8 @@ import telebot
 import sqlalchemy
 import logging
 
-from sqlalchemy.orm import sessionmaker
+from typing import List, Dict, Set
+from sqlalchemy.orm import sessionmaker, Session as DBSession
 from sqlalchemy import and_
 from telebot import types, custom_filters, StateMemoryStorage
 from telebot.states import StatesGroup, State
@@ -11,25 +12,25 @@ from config import *
 from db import *
 
 # Инициализация базы данных и бота
-DSN = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-engine = sqlalchemy.create_engine(DSN)
-Session = sessionmaker(bind=engine)
+DSN: str = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+engine: sqlalchemy.engine.Engine = sqlalchemy.create_engine(DSN)
+Session: sessionmaker  = sessionmaker(bind=engine)
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("__BOT__")
+logger: logging.Logger = logging.getLogger("__BOT__")
 
 logger.info('Start telegram bot...')
 
-state_storage = StateMemoryStorage()
-bot = telebot.TeleBot(TG_TOKEN, state_storage=state_storage)
+state_storage: StateMemoryStorage = StateMemoryStorage()
+bot: telebot.TeleBot = telebot.TeleBot(TG_TOKEN, state_storage=state_storage)
 
-known_users = set()
-userStep = {}
-buttons = []
-word_list = []
+known_users: Set[int] = set()
+userStep: Dict[int, int] = {}
+buttons: List[types.KeyboardButton] = []
+word_list: List[str] = []
 
 
-def show_hint(*lines):
+def show_hint(*lines: str) -> str:
     """
     Функция для отображения подсказки пользовтелю
     :param lines: Произвольное количество строк, которые будут объединены в одну подсказку.
@@ -38,7 +39,7 @@ def show_hint(*lines):
     return '\n'.join(lines)
 
 
-def show_target(data):
+def show_target(data: Dict[str, str]) -> str:
     """
     Функция для отображения целевого слова и его перевода.
     :param data: Словарь содержащий целевое слово и его перевод
@@ -51,21 +52,21 @@ class Command:
     """
     Класс, содержащий команды для взаимодействия с пользователем
     """
-    ADD_WORD = 'Добавить слово ➕'
-    DELETE_WORD = 'Удалить слово🔙'
-    NEXT = 'Дальше ⏭'
+    ADD_WORD: str = 'Добавить слово ➕'
+    DELETE_WORD: str = 'Удалить слово🔙'
+    NEXT: str = 'Дальше ⏭'
 
 
 class MyStates(StatesGroup):
     """
     Класс для упарвления состоянием бота
     """
-    target_word = State()
-    translate_word = State()
-    another_words = State()
+    target_word: State  = State()
+    translate_word: State  = State()
+    another_words: State  = State()
 
 
-def get_user_step(uid):
+def get_user_step(uid: int) -> int:
     """
     Функция для получения текущего шага пользователя.
     :param uid: Уникальный идентификатор пользователя.
@@ -78,18 +79,18 @@ def get_user_step(uid):
     return userStep.get(uid, 0)
 
 
-def create_markup(buttons):
+def create_markup(buttons: List[types.KeyboardButton]) -> types.ReplyKeyboardMarkup:
     """
     Функция для создания клавиатуры с кнопками.
     :param buttons: Список кнопок клавиатуры
     :return:Клавиатура
     """
-    markup = types.ReplyKeyboardMarkup(row_width=2)
+    markup: types.ReplyKeyboardMarkup = types.ReplyKeyboardMarkup(row_width=2)
     markup.add(*buttons)
     return markup
 
 
-def initialize_user(session, username):
+def initialize_user(session: DBSession, username: str) -> None:
     """
     Функция для добавления нового пользователя в базу данных
     :param session: Сессия базы данных.
@@ -100,7 +101,7 @@ def initialize_user(session, username):
 
 
 @bot.message_handler(commands=['cards', 'start'])
-def create_cards(message):
+def create_cards(message: types.Message) -> None:
     """
     Обработчик команд: /cards или /start
     """
@@ -109,7 +110,7 @@ def create_cards(message):
         db_init(session)
         initialize_user(session, message.from_user.username)
 
-    cid = message.chat.id
+    cid: int = message.chat.id
     if cid not in known_users:
         known_users.add(cid)
         userStep[cid] = 0
@@ -117,7 +118,7 @@ def create_cards(message):
 
     update_buttons(message)
 
-def update_buttons(message):
+def update_buttons(message: types.Message) -> None:
     """
     Функция для обновления кнопок с новыми словами.
     """
@@ -144,7 +145,7 @@ def update_buttons(message):
 
 
 @bot.message_handler(func=lambda message: message.text == Command.NEXT)
-def next_cards(message):
+def next_cards(message: types.Message) -> None:
     """
     Обработчик команды "Дальше ⏭"
     """
@@ -153,23 +154,23 @@ def next_cards(message):
 
 
 @bot.message_handler(func=lambda message: message.text == Command.DELETE_WORD)
-def handle_delete_word(message):
+def handle_delete_word(message: types.Message) -> None:
     """
     Обработчик команды "Удалить слово🔙". Запрашивает у пользователя слово которое планируем удалить.
     """
     bot.send_message(message.chat.id, f'{message.from_user.username}, введите слово которое хотите удалить')
     bot.register_next_step_handler(message, process_delete_word)
 
-def process_delete_word(message):
+def process_delete_word(message: types.Message) -> None:
     """
     Функция для обработки удаления слова
     :param message: Сообщение пользователя, содержащее слово для удаления
     """
     try:
-        incoming_word = message.text.strip().lower().split()
+        incoming_word: List[str] = message.text.strip().lower().split()
         if len(incoming_word) != 1:
             raise ValueError
-        word = incoming_word[0]
+        word: str = incoming_word[0]
         logger.info(word)
         with Session() as session:
             if session.query(Words).join(UserWord).join(Users).filter(and_(Words.target_word==word,Users.name==message.chat.username)).first():
@@ -184,14 +185,14 @@ def process_delete_word(message):
 
 
 @bot.message_handler(func=lambda message: message.text == Command.ADD_WORD)
-def handle_add_word(message):
+def handle_add_word(message: types.Message) -> None:
     """
     Обработчик команды "Добавить слово ➕". Запрашивает у пользователя слово и его перевод.G
     """
     bot.send_message(message.chat.id, f'{message.from_user.username}, введите слово и его перевод')
     bot.register_next_step_handler(message, process_add_word)
 
-def process_add_word(message):
+def process_add_word(message: types.Message) -> None:
     """
     Функция для обработки добавления пары слово-перевод
     """
@@ -214,11 +215,11 @@ def process_add_word(message):
 
 
 @bot.message_handler(commands=['help'])
-def help_command(message):
+def help_command(message: types.Message) -> None:
     """
     Обработчик команды /help. Выводит справку по работе бота
     """
-    help_text = """
+    help_text: str = """
         🤖 **Описание программы:**
         Этот бот помогает вам учить английские слова. Вы можете добавлять новые слова, удалять их и тренироваться в запоминании.
 
@@ -246,25 +247,25 @@ def help_command(message):
 
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
-def message_reply(message):
+def message_reply(message: types.Message) -> None:
     """
     Обработчик текстовых сообщений от пользователя. Проверяет правильность перевода слова.
     """
-    text = message.text
-    valid = False
+    text: str = message.text
+    valid: bool = False
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-        target_word = data['target_word']
+        target_word: str = data['target_word']
         if text == target_word:
-            hint = show_target(data)
-            hint_text = ["Отлично!❤", hint]
-            hint = show_hint(*hint_text)
+            hint: str = show_target(data)
+            hint_text: List[str] = ["Отлично!❤", hint]
+            hint: str = show_hint(*hint_text)
             valid = True
         else:
             for btn in buttons:
                 if btn.text == text:
                     btn.text = text + '❌'
                     break
-            hint = show_hint("Допущена ошибка!", f"Попробуй ещё раз вспомнить слово 🇷🇺{data['translate_word'].capitalize()}")
+            hint: str = show_hint("Допущена ошибка!", f"Попробуй ещё раз вспомнить слово 🇷🇺{data['translate_word'].capitalize()}")
     bot.send_message(message.chat.id, hint, reply_markup=create_markup(buttons))
     if valid:
         next_cards(message)
